@@ -215,6 +215,11 @@ class RobotEnv(Node): # Robot ortamını temsil eden sınıf, rclpy.node.Node s�
         # Robotu başlangıç konumuna ışınla
         self.teleport_to_home()
         
+        # End-effector konumunu al ve yazdır
+        position, rotation = self.get_end_effector_position()
+        if position is not None:
+            self.get_logger().info(f"End-effector konumu: {position}")
+        
         self.target_position = target_position # Verilen hedef pozisyonu saklar
         self.target_translation = target_translation # Verilen hedef translasyonu/rotasyonu saklar
 

@@ -61,7 +61,7 @@ class ReplayBuffer: # Deneyim tekrarı (Replay Buffer) mekanizmasını uygulayan
             self.storage[self.ptr] = data # İşaretçinin gösterdiği konuma yeni deneyimi yazar
             self.ptr = (self.ptr + 1) % self.max_size # İşaretçiyi dairesel (circular) olarak bir sonraki pozisyona günceller
 
-    def sample(self, batch_size=100): # Buffer'dan rastgele bir mini-batch (küçük parti) deneyim örneği alır
+    def sample(self, batch_size=20): # Buffer'dan rastgele bir mini-batch (küçük parti) deneyim örneği alır
         ind = np.random.randint(0, len(self.storage), size=batch_size) # Buffer boyutundan rastgele indeksler seçer
         batch = [self.storage[i] for i in ind] # Seçilen indekslere karşılık gelen deneyimleri bir liste olarak toplar
 
@@ -114,7 +114,7 @@ class TD3: # Twin Delayed Deep Deterministic Policy Gradient (TD3) algoritmasın
 
             # Hedef Q-değerlerini hesapla (Clipped Double Q-Learning)
             target_Q1, target_Q2 = self.critic_target(next_state, next_action) # Hedef critic ağlarından bir sonraki durum ve bir sonraki aksiyon için Q-değerlerini al
-            print(f'target1: {target_Q1} target2: {target_Q2}') # Hesaplanan hedef Q1 ve Q2 değerlerini yazdır (debug amaçlı olabilir)
+            # print(f'target1: {target_Q1} target2: {target_Q2}') # Hesaplanan hedef Q1 ve Q2 değerlerini yazdır (debug amaçlı olabilir)
             target_Q = torch.min(target_Q1, target_Q2) # İki hedef Q-değerinden daha küçük olanı seçerek aşırı tahmin (overestimation) sorununu azaltır
             target_Q = reward + gamma * target_Q # Bellman denklemini kullanarak nihai hedef Q-değerini hesapla (burada (1-done) faktörü eksik olabilir, duruma göre eklenmeli)
             '''(1 - done) *''' # Orijinal koddaki yorum satırı, genellikle target_Q = reward + (1 - done) * gamma * target_Q şeklinde kullanılır

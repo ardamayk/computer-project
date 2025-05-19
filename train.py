@@ -79,6 +79,7 @@ def main(): # Ana fonksiyonu tanımla
             replay_buffer.add(state, action, reward, next_state, float(done)) # Deneyimi buffer'a ekle
 
             if replay_buffer.size() > 25: # Eğer buffer'da yeterli deneyim varsa
+                print(f'Buffer size: {replay_buffer.size()}') # Buffer boyutunu yazdır
                 td3_agent.train(replay_buffer) # Ajanı eğit
 
             state = next_state # Durumu güncelle
