@@ -57,14 +57,25 @@ def main(): # Ana fonksiyonu tanımla
         done = False # Bölümün bitip bitmediğini gösteren bayrak
         total_reward = 0 # Toplam ödülü sıfırla
 
+        i = 0
         while not done: # Bölüm bitene kadar döngü
+            i += 1
+            print(f'iterasyon: {i}') # Durumu yazdır
             action = td3_agent.select_action(np.array(state)) # Ajanstan aksiyon seç
             print(f'Action: {action}') # Seçilen aksiyonu yazdır
 
             next_state, reward, done = env.step(action) # Ortamda bir adım at ve sonraki durumu, ödülü ve bitiş durumunu al
             print(f'Next State: {next_state}') # Sonraki durumu yazdır
             print(f'Reward: {reward}, Done: {done}') # Ödülü ve bitiş durumunu yazdır
+            
+            # Çarpışma durumunu kontrol et (reward 0.0 ve done True ise çarpışma olmuştur)
+            if done and reward == 0.0:
+                print("Çarpışma nedeniyle episode sonlandırıldı!")
+                # Robotu direkt başlangıç konumuna ışınla
+                env.teleport_to_home()
+                break
 
+            # Çarpışma olmadıysa deneyimi buffer'a ekle ve ajanı eğit
             replay_buffer.add(state, action, reward, next_state, float(done)) # Deneyimi buffer'a ekle
 
             if replay_buffer.size() > 25: # Eğer buffer'da yeterli deneyim varsa
@@ -72,6 +83,12 @@ def main(): # Ana fonksiyonu tanımla
 
             state = next_state # Durumu güncelle
             total_reward += reward # Toplam ödülü güncelle
+            
+            # Hedef tamamlandıysa da robotu başlangıç konumuna ışınla
+            if done:
+                print(f"Hedef tamamlandı! Episode sona erdi.")
+                env.teleport_to_home()
+                break
 
         print(f'Episode {ep+1} Total Reward: {total_reward:.2f}') # Bölümün toplam ödülünü yazdır
 
