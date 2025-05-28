@@ -95,7 +95,7 @@ class TD3: # Twin Delayed Deep Deterministic Policy Gradient (TD3) algoritmasın
         state = torch.FloatTensor(state.reshape(1, -1)) # Gelen durumu (NumPy dizisi olabilir) PyTorch tensörüne dönüştürür ve (1, state_dim) şeklinde yeniden boyutlandırır
         return self.actor(state).detach().cpu().numpy().flatten() # Aktör modelinden aksiyonu alır, gradyan takibini keser (detach), CPU'ya taşır, NumPy dizisine çevirir ve tek boyutlu hale getirir (flatten)
 
-    def train(self, replay_buffer, batch_size=10, gamma=0.99, tau=0.005, policy_noise=0.2, noise_clip=0.5): # TD3 ajanını eğitir
+    def train(self, replay_buffer, batch_size=100, gamma=0.99, tau=0.005, policy_noise=0.2, noise_clip=0.5): # TD3 ajanını eğitir
         self.total_it += 1 # Toplam iterasyon sayacını bir artırır
 
         # Replay buffer'dan rastgele bir batch deneyim örneği al

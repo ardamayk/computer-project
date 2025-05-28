@@ -168,7 +168,7 @@ class RobotEnv(Node): # Robot ortamını temsil eden sınıf, rclpy.node.Node s�
         point.accelerations = [0.0] * len(self.joint_names)  # Tüm eklemler için ivme 0
         
         # Hareketi 2 saniyede yapmak için süreyi ayarlıyoruz
-        point.time_from_start = Duration(sec=2, nanosec=0)  # 2 saniye
+        point.time_from_start = Duration(sec=1, nanosec=0)  # 2 saniye
         
         msg.points.append(point)
         
@@ -273,7 +273,7 @@ class RobotEnv(Node): # Robot ortamını temsil eden sınıf, rclpy.node.Node s�
         point.positions = new_joint_states.tolist() # Hesaplanan yeni eklem pozisyonlarını yörünge noktasına atar
         
         # Hareketi 2 saniyede yapmak için süreyi ayarlıyoruz
-        point.time_from_start = Duration(sec=2, nanosec=0)  # 2 saniye
+        point.time_from_start = Duration(sec=1, nanosec=0)  # 1 saniye
 
         msg.points.append(point) # Yörünge noktalarını mesaja ekler
         self.publisher.publish(msg) # Oluşturulan yörünge mesajını yayınlar

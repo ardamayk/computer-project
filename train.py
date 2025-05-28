@@ -4,10 +4,13 @@ import threading # Threading modülünü içe aktar
 from env import RobotEnv # RobotEnv sınıfını env dosyasından içe aktar
 from td3 import Actor, Critic, ReplayBuffer, TD3 # TD3 algoritması ile ilgili sınıfları td3 dosyasından içe aktar
 from rclpy.executors import MultiThreadedExecutor # Çoklu iş parçacıklı yürütücüyü içe aktar
+from geometry_msgs.msg import PointStamped
+
 
 def main(): # Ana fonksiyonu tanımla
     rclpy.init() # ROS2'yi başlat
     env = RobotEnv() # RobotEnv sınıfından bir örnek oluştur
+    target_pub = env.create_publisher(PointStamped, 'target_position', 10)
 
     # Start a multi-threaded executor in a separate thread # Çoklu iş parçacıklı bir yürütücüyü ayrı bir thread'de başlat
     executor = MultiThreadedExecutor() # MultiThreadedExecutor'dan bir örnek oluştur
@@ -44,9 +47,15 @@ def main(): # Ana fonksiyonu tanımla
     best_reward = float('inf')  # Çünkü tüm reward'lar negatif # En iyi ödülü sonsuz olarak başlat (negatif ödüller için)
 
     for ep in range(episodes): # Her bölüm için döngü
-        target_position = np.array([0.5, 0.2, 1]) # Hedef pozisyonu belirle
+        target_position = np.array([0, 0.5, 1]) # Hedef pozisyonu belirle
         target_translation = [0, 0, 0, 0] # Hedef translasyonu belirle (quaternion olarak düşünülmüş olabilir, ancak burada sadece 4 elemanlı bir liste)
-
+        point_msg = PointStamped()
+        point_msg.header.frame_id = 'world'  # Ya da 'base_link', ortamın TF frame'ine göre değiştir
+        point_msg.header.stamp = env.get_clock().now().to_msg()
+        point_msg.point.x = target_position[0]
+        point_msg.point.y = target_position[1]
+        point_msg.point.z = target_position[2]
+        target_pub.publish(point_msg)
         print(f'\n--- Episode {ep+1} ---') # Bölüm numarasını yazdır
         print(f'Target Position: {target_position}') # Hedef pozisyonu yazdır
         print(f'Target Translation: {target_translation}') # Hedef translasyonu yazdır
@@ -78,7 +87,7 @@ def main(): # Ana fonksiyonu tanımla
             # Çarpışma olmadıysa deneyimi buffer'a ekle ve ajanı eğit
             replay_buffer.add(state, action, reward, next_state, float(done)) # Deneyimi buffer'a ekle
 
-            if replay_buffer.size() > 25: # Eğer buffer'da yeterli deneyim varsa
+            if replay_buffer.size() > 100: # Eğer buffer'da yeterli deneyim varsa
                 print(f'Buffer size: {replay_buffer.size()}') # Buffer boyutunu yazdır
                 td3_agent.train(replay_buffer) # Ajanı eğit
 
