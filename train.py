@@ -1,119 +1,177 @@
-import rclpy # ROS2 Python istemci kütüphanesini içe aktar
-import numpy as np # NumPy kütüphanesini içe aktar
-import threading # Threading modülünü içe aktar
-from env import RobotEnv # RobotEnv sınıfını env dosyasından içe aktar
+import rclpy
+import numpy as np
+import threading
+import time
+import os
+
+from env import RobotEnv
 from model_utils import Actor, Critic
 from td3_agent import TD3
 from replay_buffer import ReplayBuffer
-
-from rclpy.executors import MultiThreadedExecutor # Çoklu iş parçacıklı yürütücüyü içe aktar
+from rclpy.executors import MultiThreadedExecutor
 from geometry_msgs.msg import PointStamped
+from utils import save_model, load_model
+
+def sample_target_ur5e(base_position=np.array([0,0,0]), max_reach=0.8):
+    while True:
+        point = np.random.uniform(-max_reach, max_reach, 3) + base_position
+        # Nokta robotun tabanından max_reach uzaklıkta olmalı
+        if np.linalg.norm(point - base_position) <= max_reach and point[2] >= 0:
+            return point
 
 
-def main(): # Ana fonksiyonu tanımla
-    rclpy.init() # ROS2'yi başlat
-    env = RobotEnv() # RobotEnv sınıfından bir örnek oluştur
+def main():
+    rclpy.init()
+    env = RobotEnv()
+    executor = MultiThreadedExecutor()
+    executor.add_node(env)
+    executor_thread = threading.Thread(target=executor.spin, daemon=True)
+    executor_thread.start()
+
     target_pub = env.create_publisher(PointStamped, 'target_position', 10)
 
-    # Start a multi-threaded executor in a separate thread # Çoklu iş parçacıklı bir yürütücüyü ayrı bir thread'de başlat
-    executor = MultiThreadedExecutor() # MultiThreadedExecutor'dan bir örnek oluştur
-    executor.add_node(env) # Ortam düğümünü yürütücüye ekle
-    executor_thread = threading.Thread(target=executor.spin, daemon=True) # Yürütücü için bir thread oluştur (daemon olarak ayarla)
-    executor_thread.start() # Thread'i başlat
+    # Model ve Replay Buffer oluşturuluyor
+    state_dim = 20
+    action_dim = 6
+    max_action = 0.2
 
-    state_dim = 20 # Durum uzayının boyutu
-    action_dim = 6 # Aksiyon uzayının boyutu
-    max_action = 0.2 # Maksimum aksiyon değeri
+    actor = Actor(state_dim, action_dim, max_action)
+    actor_target = Actor(state_dim, action_dim, max_action)
+    actor_target.load_state_dict(actor.state_dict())
 
-    actor = Actor(state_dim, action_dim, max_action) # Aktör modelini oluştur
-    actor_target = Actor(state_dim, action_dim, max_action) # Hedef aktör modelini oluştur
-    actor_target.load_state_dict(actor.state_dict()) # Hedef aktörün ağırlıklarını aktörün ağırlıklarıyla başlat
+    critic = Critic(state_dim, action_dim)
+    critic_target = Critic(state_dim, action_dim)
+    critic_target.load_state_dict(critic.state_dict())
 
-    critic = Critic(state_dim, action_dim) # Critic modelini oluştur
-    critic_target = Critic(state_dim, action_dim) # Hedef critic modelini oluştur
-    critic_target.load_state_dict(critic.state_dict()) # Hedef critic'in ağırlıklarını critic'in ağırlıklarıyla başlat
-
-    replay_buffer = ReplayBuffer() # Deneyim tekrarı buffer'ını oluştur
-
-    td3_agent = TD3( # TD3 ajanını oluştur
-        state_dim=state_dim, # Durum boyutu
-        action_dim=action_dim, # Aksiyon boyutu
-        max_action=max_action, # Maksimum aksiyon
-        actor=actor, # Aktör modeli
-        critic=critic, # Critic modeli
-        actor_target=actor_target, # Hedef aktör modeli
-        critic_target=critic_target, # Hedef critic modeli
-        policy_freq=1 # Politika güncelleme frekansı
+    td3_agent = TD3(
+        state_dim=state_dim,
+        action_dim=action_dim,
+        max_action=max_action,
+        actor=actor,
+        critic=critic,
+        actor_target=actor_target,
+        critic_target=critic_target,
+        policy_freq=1
     )
 
-    episodes = 1000 # Toplam bölüm sayısı
-    best_reward = float('inf')  # Çünkü tüm reward'lar negatif # En iyi ödülü sonsuz olarak başlat (negatif ödüller için)
+    replay_buffer = ReplayBuffer()
 
-    for ep in range(episodes): # Her bölüm için döngü
-        target_position = np.array([0, 0.5, 1]) # Hedef pozisyonu belirle
-        target_translation = [0, 0, 0, 0] # Hedef translasyonu belirle (quaternion olarak düşünülmüş olabilir, ancak burada sadece 4 elemanlı bir liste)
-        point_msg = PointStamped()
-        point_msg.header.frame_id = 'world'  # Ya da 'base_link', ortamın TF frame'ine göre değiştir
-        point_msg.header.stamp = env.get_clock().now().to_msg()
-        point_msg.point.x = target_position[0]
-        point_msg.point.y = target_position[1]
-        point_msg.point.z = target_position[2]
-        target_pub.publish(point_msg)
-        print(f'\n--- Episode {ep+1} ---') # Bölüm numarasını yazdır
-        print(f'Target Position: {target_position}') # Hedef pozisyonu yazdır
-        print(f'Target Translation: {target_translation}') # Hedef translasyonu yazdır
+    # Checkpoint yükleme
+    load_choice = input("Checkpoint'ten yüklemek istiyor musunuz? (e/h): ").strip().lower()
+    if load_choice == 'e':
+        checkpoints_dir = 'checkpoints'
+        if not os.path.exists(checkpoints_dir):
+            print("⚠️ 'checkpoints/' klasörü bulunamadı. Sıfırdan başlanacak.")
+        else:
+            checkpoints = sorted([f for f in os.listdir(checkpoints_dir) if f.endswith('.pth')])
+            if checkpoints:
+                print("Mevcut Checkpointler:")
+                for ckpt in checkpoints:
+                    print(f"- {ckpt}")
+                filename = input("Yüklemek istediğiniz checkpoint dosyasını girin (örnek: deneme1): ").strip()
+                if not filename.endswith('.pth'):
+                    filename += '.pth'
+                full_path = os.path.join(checkpoints_dir, filename)
+                if os.path.exists(full_path):
+                    load_model(td3_agent, replay_buffer, full_path)  # .pth uzantısını kaldırma
+                    print(f"✅ '{filename}' yüklendi.")
+                else:
+                    print(f"❌ Hata: '{full_path}' bulunamadı. Sıfırdan başlanacak.")
+            else:
+                print("⚠️ Kayıtlı checkpoint bulunamadı. Sıfırdan başlanacak.")
 
-        state = env.reset(target_position, target_translation) # Ortamı sıfırla ve başlangıç durumunu al
-        print(f'Initial State: {state}') # Başlangıç durumunu yazdır
+    # Eğitim döngüsü
+    episodes = 1000
+    best_reward = float('inf')
+    ACTION_TIMEOUT = 20
 
-        done = False # Bölümün bitip bitmediğini gösteren bayrak
-        total_reward = 0 # Toplam ödülü sıfırla
+    try:
+        for ep in range(episodes):
+            target_position = sample_target_ur5e()
+            target_translation = [0, 0, 0, 0]
 
-        i = 0
-        while not done: # Bölüm bitene kadar döngü
-            target_pub.publish(point_msg)
-            i += 1
-            print(f'iterasyon: {i}') # Durumu yazdır
-            action = td3_agent.select_action(np.array(state)) # Ajanstan aksiyon seç
-            print(f'Action: {action}') # Seçilen aksiyonu yazdır
+            point_msg = PointStamped()
+            point_msg.header.frame_id = 'world'
+            point_msg.header.stamp = env.get_clock().now().to_msg()
+            point_msg.point.x, point_msg.point.y, point_msg.point.z = target_position
 
-            next_state, reward, done = env.step(action) # Ortamda bir adım at ve sonraki durumu, ödülü ve bitiş durumunu al
-            print(f'Next State: {next_state}') # Sonraki durumu yazdır
-            print(f'Reward: {reward}, Done: {done}') # Ödülü ve bitiş durumunu yazdır
-            
-            # Çarpışma durumunu kontrol et (reward 0.0 ve done True ise çarpışma olmuştur)
-            if done and reward == 0.0:
-                print("Çarpışma nedeniyle episode sonlandırıldı!")
-                # Robotu direkt başlangıç konumuna ışınla
-                env.teleport_to_home()
-                break
+            print(f'\n--- Episode {ep+1} ---')
+            print(f'Target Position: {target_position}')
+            print(f'Target Translation: {target_translation}')
 
-            # Çarpışma olmadıysa deneyimi buffer'a ekle ve ajanı eğit
-            replay_buffer.add(state, action, reward, next_state, float(done)) # Deneyimi buffer'a ekle
+            state = env.reset(target_position, target_translation)
+            total_reward = 0.0
+            done = False
+            step_count = 0
 
-            if replay_buffer.size() > 100: # Eğer buffer'da yeterli deneyim varsa
-                print(f'Buffer size: {replay_buffer.size()}') # Buffer boyutunu yazdır
-                td3_agent.train(replay_buffer) # Ajanı eğit
+            while not done:
+                iter_start = time.time()
+                target_pub.publish(point_msg)
+                step_count += 1
+                print(f'İterasyon: {step_count}')
 
-            state = next_state # Durumu güncelle
-            total_reward += reward # Toplam ödülü güncelle
-            
-            # Hedef tamamlandıysa da robotu başlangıç konumuna ışınla
-            if done:
-                print(f"Hedef tamamlandı! Episode sona erdi.")
-                env.teleport_to_home()
-                break
+                action = td3_agent.select_action(np.array(state))
+                print(f'Action: {action}')
 
-        print(f'Episode {ep+1} Total Reward: {total_reward:.2f}') # Bölümün toplam ödülünü yazdır
+                # Step denemesi
+                while True:
+                    try:
+                        next_state, reward, done = env.step(action)
+                        break
+                    except TimeoutError:
+                        if time.time() - iter_start > ACTION_TIMEOUT:
+                            print(f"\u23f0 {ACTION_TIMEOUT} saniyeyi aştı. Episode iptal.")
+                            env.teleport_to_home()
+                            reward = 0.0
+                            next_state = state
+                            done = True
+                            break
+                        time.sleep(0.1)
 
-        if total_reward < best_reward: # Eğer mevcut bölümün ödülü en iyi ödülden daha iyiyse (daha az negatifse)
-            best_reward = total_reward # En iyi ödülü güncelle
-            print(f'✅ New Best Reward: {best_reward:.2f}') # Yeni en iyi ödülü yazdır
+                print(f'Next State: {next_state}')
+                print(f'Reward: {reward}, Done: {done}')
 
-    # Shutdown # Kapatma işlemleri
-    env.destroy_node() # Ortam düğümünü yok et
-    rclpy.shutdown() # ROS2'yi kapat
-    # executor_thread.join() kaldırıldı # Yürütücü thread'inin birleştirilmesi kaldırıldı
+                if done and reward == 0.0:
+                    print("⚠️ Çarpışma! Episode erken sonlandırıldı.")
+                    env.teleport_to_home()
+                    break
 
-if __name__ == '__main__': # Eğer dosya doğrudan çalıştırılıyorsa
-    main() # Ana fonksiyonu çağır
+                replay_buffer.add(state, action, reward, next_state, float(done))
+                if replay_buffer.size() > 100:
+                    td3_agent.train(replay_buffer)
+                    print(f'Buffer size: {replay_buffer.size()}')
+
+                state = next_state
+                total_reward += reward
+
+                if done:
+                    print(f"🏁 Episode sona erdi. Robot eve dönüyor.")
+                    env.teleport_to_home()
+                    break
+
+            print(f'Episode {ep+1} Total Reward: {total_reward:.2f}')
+
+            # En iyi reward güncelle
+            if total_reward < best_reward:
+                best_reward = total_reward
+                print(f'✅ Yeni en iyi reward: {best_reward:.2f}')
+                os.makedirs("checkpoints", exist_ok=True)
+                save_model(td3_agent, replay_buffer, f"checkpoints/best")
+
+    except KeyboardInterrupt:
+        print("\n🛑 Eğitim kullanıcı tarafından durduruldu.")
+        save_choice = input("Checkpoint kaydedilsin mi? (e/h): ").strip().lower()
+        if save_choice == 'e':
+            os.makedirs("checkpoints", exist_ok=True)
+            filename = input("Kaydetmek için dosya adı girin (uzantısız): ").strip()
+            save_model(td3_agent, replay_buffer, f"checkpoints/{filename}")
+            print(f"📦 Model kaydedildi: checkpoints/{filename}.pth")
+        else:
+            print("📭 Kaydetmeden çıkılıyor.")
+    finally:
+        env.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
