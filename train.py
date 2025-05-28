@@ -2,7 +2,10 @@ import rclpy # ROS2 Python istemci kütüphanesini içe aktar
 import numpy as np # NumPy kütüphanesini içe aktar
 import threading # Threading modülünü içe aktar
 from env import RobotEnv # RobotEnv sınıfını env dosyasından içe aktar
-from td3 import Actor, Critic, ReplayBuffer, TD3 # TD3 algoritması ile ilgili sınıfları td3 dosyasından içe aktar
+from model_utils import Actor, Critic
+from td3_agent import TD3
+from replay_buffer import ReplayBuffer
+
 from rclpy.executors import MultiThreadedExecutor # Çoklu iş parçacıklı yürütücüyü içe aktar
 from geometry_msgs.msg import PointStamped
 
@@ -68,6 +71,7 @@ def main(): # Ana fonksiyonu tanımla
 
         i = 0
         while not done: # Bölüm bitene kadar döngü
+            target_pub.publish(point_msg)
             i += 1
             print(f'iterasyon: {i}') # Durumu yazdır
             action = td3_agent.select_action(np.array(state)) # Ajanstan aksiyon seç
