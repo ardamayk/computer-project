@@ -3,6 +3,7 @@ import numpy as np
 import threading
 import time
 import os
+import json
 
 from env import RobotEnv
 from model_utils import Actor, Critic
@@ -11,6 +12,7 @@ from replay_buffer import ReplayBuffer
 from rclpy.executors import MultiThreadedExecutor
 from geometry_msgs.msg import PointStamped
 from utils import save_model, load_model
+from visualization import update_plot
 
 def sample_target_ur5e(base_position=np.array([0,0,0]), max_reach=0.8):
     while True:
@@ -19,6 +21,15 @@ def sample_target_ur5e(base_position=np.array([0,0,0]), max_reach=0.8):
         if np.linalg.norm(point - base_position) <= max_reach and point[2] >= 0:
             return point
 
+def load_previous_rewards():
+    if os.path.exists('rewards_history.json'):
+        with open('rewards_history.json', 'r') as f:
+            return json.load(f)
+    return []
+
+def save_rewards(rewards):
+    with open('rewards_history.json', 'w') as f:
+        json.dump(rewards, f)
 
 def main():
     rclpy.init()
@@ -56,6 +67,12 @@ def main():
 
     replay_buffer = ReplayBuffer()
 
+    # Önceki reward değerlerini yükle
+    previous_rewards = load_previous_rewards()
+    
+    # Mevcut eğitim için reward listesi
+    current_rewards = []
+    
     # Checkpoint yükleme
     load_choice = input("Checkpoint'ten yüklemek istiyor musunuz? (e/h): ").strip().lower()
     if load_choice == 'e':
@@ -73,7 +90,7 @@ def main():
                     filename += '.pth'
                 full_path = os.path.join(checkpoints_dir, filename)
                 if os.path.exists(full_path):
-                    load_model(td3_agent, replay_buffer, full_path)  # .pth uzantısını kaldırma
+                    load_model(td3_agent, replay_buffer, full_path)
                     print(f"✅ '{filename}' yüklendi.")
                 else:
                     print(f"❌ Hata: '{full_path}' bulunamadı. Sıfırdan başlanacak.")
@@ -158,17 +175,32 @@ def main():
                 os.makedirs("checkpoints", exist_ok=True)
                 save_model(td3_agent, replay_buffer, f"checkpoints/best")
 
+            print("total_reward\n", total_reward)
+            print("current_rewards\n", current_rewards)
+            print("previous_rewards\n", previous_rewards)
+            current_rewards.append(total_reward)
+            print("current_rewards\n", current_rewards)
+            update_plot(current_rewards, previous_rewards)
+            print(f"📊 Görselleştirme güncellendi. Toplam {len(current_rewards)} episode.")
+
     except KeyboardInterrupt:
         print("\n🛑 Eğitim kullanıcı tarafından durduruldu.")
-        save_choice = input("Checkpoint kaydedilsin mi? (e/h): ").strip().lower()
+        save_choice = input("Checkpoint ve reward değerleri kaydedilsin mi? (e/h): ").strip().lower()
         if save_choice == 'e':
+            # Model kaydetme
             os.makedirs("checkpoints", exist_ok=True)
             filename = input("Kaydetmek için dosya adı girin (uzantısız): ").strip()
             save_model(td3_agent, replay_buffer, f"checkpoints/{filename}")
             print(f"📦 Model kaydedildi: checkpoints/{filename}.pth")
+            
+            # Reward değerlerini kaydet
+            if current_rewards:  # Sadece reward değerleri varsa kaydet
+                save_rewards(current_rewards)
+                print(f"📊 Reward değerleri kaydedildi: rewards_history.json")
         else:
             print("📭 Kaydetmeden çıkılıyor.")
     finally:
+        plt.close('all')
         env.destroy_node()
         rclpy.shutdown()
 

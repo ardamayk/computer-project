@@ -281,8 +281,13 @@ class RobotEnv(Node): # Robot ortamını temsil eden sınıf, rclpy.node.Node s�
         
         # Collision kontrolü için son kontrol zamanı
         last_collision_check = time.time()
+        step_start_time = time.time()
 
         while True: # Robotun hedeflenen yeni eklem durumlarına ulaşmasını bekler
+            # Zaman aşımı kontrolü
+            if time.time() - step_start_time > 30.0:  # 30 saniye zaman aşımı
+                raise TimeoutError("Step işlemi zaman aşımına uğradı")
+
             current_time = self.get_clock().now().seconds_nanoseconds()[0]
             if current_time - self.last_print_time >= 5.0:  # 5 saniyede bir yazdır
                 print(f'current_joint_angles: {self.current_joint_angles}') # Durumu yazdır
@@ -309,7 +314,7 @@ class RobotEnv(Node): # Robot ortamını temsil eden sınıf, rclpy.node.Node s�
             return self.get_observation(self.target_position, self.target_translation), 0.0, True
 
         obs = self.get_observation(self.target_position, self.target_translation) # Yeni durumdaki gözlemi alır
-        reward = self.compute_reward() # Yeni durum için ödülü hesaplar
+        reward = self.compute_reward()
         done = self.is_done() # Yeni durumda bölümün bitip bitmediğini kontrol eder
 
         return obs, reward, done # Gözlem, ödül ve bitiş durumunu döndürür
