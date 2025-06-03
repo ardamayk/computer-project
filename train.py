@@ -3,7 +3,6 @@ import numpy as np
 import threading
 import time
 import os
-import json
 
 from env import RobotEnv
 from model_utils import Actor, Critic
@@ -11,8 +10,8 @@ from td3_agent import TD3
 from replay_buffer import ReplayBuffer
 from rclpy.executors import MultiThreadedExecutor
 from geometry_msgs.msg import PointStamped
-from utils import save_model, load_model
-from visualization import update_plot
+from visualization import RewardVisualizer
+from model_io import load_checkpoint, save_checkpoint, list_available_models
 
 def sample_target_ur5e(base_position=np.array([0,0,0]), max_reach=0.8):
     while True:
@@ -20,16 +19,6 @@ def sample_target_ur5e(base_position=np.array([0,0,0]), max_reach=0.8):
         # Nokta robotun tabanından max_reach uzaklıkta olmalı
         if np.linalg.norm(point - base_position) <= max_reach and point[2] >= 0:
             return point
-
-def load_previous_rewards():
-    if os.path.exists('rewards_history.json'):
-        with open('rewards_history.json', 'r') as f:
-            return json.load(f)
-    return []
-
-def save_rewards(rewards):
-    with open('rewards_history.json', 'w') as f:
-        json.dump(rewards, f)
 
 def main():
     rclpy.init()
@@ -66,36 +55,28 @@ def main():
     )
 
     replay_buffer = ReplayBuffer()
-
-    # Önceki reward değerlerini yükle
-    previous_rewards = load_previous_rewards()
-    
-    # Mevcut eğitim için reward listesi
-    current_rewards = []
+    current_rewards = []  # Mevcut eğitimdeki reward değerleri
+    current_episodes = []  # Mevcut eğitimdeki episode numaraları
+    previous_episodes = None
+    previous_rewards = None
     
     # Checkpoint yükleme
     load_choice = input("Checkpoint'ten yüklemek istiyor musunuz? (e/h): ").strip().lower()
     if load_choice == 'e':
-        checkpoints_dir = 'checkpoints'
-        if not os.path.exists(checkpoints_dir):
-            print("⚠️ 'checkpoints/' klasörü bulunamadı. Sıfırdan başlanacak.")
+        model_dirs = list_available_models()
+        if model_dirs:
+            print("Mevcut Modeller:")
+            for model_dir in model_dirs:
+                print(f"- {model_dir}")
+            model_name = input("Yüklemek istediğiniz model adını girin: ").strip()
+            success, (previous_episodes, previous_rewards) = load_checkpoint(td3_agent, replay_buffer, model_name)
+            if not success:
+                print("⚠️ Model yüklenemedi. Sıfırdan başlanacak.")
         else:
-            checkpoints = sorted([f for f in os.listdir(checkpoints_dir) if f.endswith('.pth')])
-            if checkpoints:
-                print("Mevcut Checkpointler:")
-                for ckpt in checkpoints:
-                    print(f"- {ckpt}")
-                filename = input("Yüklemek istediğiniz checkpoint dosyasını girin (örnek: deneme1): ").strip()
-                if not filename.endswith('.pth'):
-                    filename += '.pth'
-                full_path = os.path.join(checkpoints_dir, filename)
-                if os.path.exists(full_path):
-                    load_model(td3_agent, replay_buffer, full_path)
-                    print(f"✅ '{filename}' yüklendi.")
-                else:
-                    print(f"❌ Hata: '{full_path}' bulunamadı. Sıfırdan başlanacak.")
-            else:
-                print("⚠️ Kayıtlı checkpoint bulunamadı. Sıfırdan başlanacak.")
+            print("⚠️ Kayıtlı model bulunamadı. Sıfırdan başlanacak.")
+
+    # Görselleştiriciyi başlat
+    visualizer = RewardVisualizer()
 
     # Eğitim döngüsü
     episodes = 1000
@@ -113,8 +94,6 @@ def main():
             point_msg.point.x, point_msg.point.y, point_msg.point.z = target_position
 
             print(f'\n--- Episode {ep+1} ---')
-            print(f'Target Position: {target_position}')
-            print(f'Target Translation: {target_translation}')
 
             state = env.reset(target_position, target_translation)
             total_reward = 0.0
@@ -128,7 +107,6 @@ def main():
                 print(f'İterasyon: {step_count}')
 
                 action = td3_agent.select_action(np.array(state))
-                print(f'Action: {action}')
 
                 # Step denemesi
                 while True:
@@ -145,11 +123,10 @@ def main():
                             break
                         time.sleep(0.1)
 
-                print(f'Next State: {next_state}')
                 print(f'Reward: {reward}, Done: {done}')
 
                 if done and reward == 0.0:
-                    print("⚠️ Çarpışma! Episode erken sonlandırıldı.")
+                    print("️ Çarpışma! Episode erken sonlandırıldı.")
                     env.teleport_to_home()
                     break
 
@@ -168,39 +145,34 @@ def main():
 
             print(f'Episode {ep+1} Total Reward: {total_reward:.2f}')
 
-            # En iyi reward güncelle
+            # En iyi modeli kaydet
             if total_reward < best_reward:
                 best_reward = total_reward
-                print(f'✅ Yeni en iyi reward: {best_reward:.2f}')
-                os.makedirs("checkpoints", exist_ok=True)
-                save_model(td3_agent, replay_buffer, f"checkpoints/best")
+                print(f" Yeni en iyi reward: {best_reward:.2f}")
+                save_checkpoint(td3_agent, replay_buffer, current_rewards, "best")
 
-            print("total_reward\n", total_reward)
-            print("current_rewards\n", current_rewards)
-            print("previous_rewards\n", previous_rewards)
+            # Mevcut episode ve reward değerini ekle
+            if previous_episodes is not None and len(previous_episodes) > 0:
+                current_episode_number = previous_episodes[-1] + len(current_episodes) + 1
+            else:
+                current_episode_number = len(current_episodes)
+            current_episodes.append(current_episode_number)
             current_rewards.append(total_reward)
-            print("current_rewards\n", current_rewards)
-            update_plot(current_rewards, previous_rewards)
-            print(f"📊 Görselleştirme güncellendi. Toplam {len(current_rewards)} episode.")
+
+            # Görselleştirme: yeni arayüze uygun şekilde çağır
+            visualizer.update(current_episodes, current_rewards, previous_episodes, previous_rewards)
+            print(f" Görselleştirme güncellendi. Toplam {len(current_rewards)} episode.")
 
     except KeyboardInterrupt:
-        print("\n🛑 Eğitim kullanıcı tarafından durduruldu.")
+        print("\n Eğitim kullanıcı tarafından durduruldu.")
         save_choice = input("Checkpoint ve reward değerleri kaydedilsin mi? (e/h): ").strip().lower()
         if save_choice == 'e':
-            # Model kaydetme
-            os.makedirs("checkpoints", exist_ok=True)
-            filename = input("Kaydetmek için dosya adı girin (uzantısız): ").strip()
-            save_model(td3_agent, replay_buffer, f"checkpoints/{filename}")
-            print(f"📦 Model kaydedildi: checkpoints/{filename}.pth")
-            
-            # Reward değerlerini kaydet
-            if current_rewards:  # Sadece reward değerleri varsa kaydet
-                save_rewards(current_rewards)
-                print(f"📊 Reward değerleri kaydedildi: rewards_history.json")
+            model_name = input("Kaydetmek için model adı girin: ").strip()
+            save_checkpoint(td3_agent, replay_buffer, current_rewards, model_name)
         else:
-            print("📭 Kaydetmeden çıkılıyor.")
+            print(" Kaydetmeden çıkılıyor.")
     finally:
-        plt.close('all')
+        visualizer.close()
         env.destroy_node()
         rclpy.shutdown()
 

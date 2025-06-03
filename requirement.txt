@@ -7,3 +7,4 @@ trajectory_msgs
 geometry_msgs
 builtin_interfaces
 matplotlib
+pandas
