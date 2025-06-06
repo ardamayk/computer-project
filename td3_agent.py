@@ -1,74 +1,99 @@
-import torch # PyTorch kütüphanesini içe aktar
-import torch.nn as nn # PyTorch'un sinir ağı modülünü (nn) nn takma adıyla içe aktar
-import torch.optim as optim # PyTorch'un optimizasyon algoritmalarını içeren modülünü (optim) optim takma adıyla içe aktar
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
-class TD3: # Twin Delayed Deep Deterministic Policy Gradient (TD3) algoritmasını uygulayan sınıf
-    def __init__(self, state_dim, action_dim, max_action, actor, critic, actor_target, critic_target, policy_freq=2): # Sınıfın yapıcı metodu
-        self.actor = actor # Ana Aktör modelini saklar
-        self.actor_target = actor_target # Hedef Aktör modelini saklar (ana modelin yavaş güncellenen kopyası)
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-3) # Ana Aktör modelinin parametreleri için Adam optimizer
+class TD3:
+    def __init__(self, state_dim, action_dim, max_action,
+                 actor, critic, actor_target, critic_target,
+                 policy_freq=2):
+        self.actor = actor
+        self.actor_target = actor_target
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-3)
 
-        self.critic = critic # Ana Critic modelini saklar
-        self.critic_target = critic_target # Hedef Critic modelini saklar (ana modelin yavaş güncellenen kopyası)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3) # Ana Critic modelinin parametreleri için Adam optimizer
+        self.critic = critic
+        self.critic_target = critic_target
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
 
-        self.max_action = max_action # Maksimum aksiyon değerini saklar
-        self.policy_freq = policy_freq # Politika (Aktör) ve hedef ağların güncelleme frekansını belirler (Critic güncellemelerine göre)
-        self.total_it = 0 # Toplam eğitim iterasyonu sayacını başlatır
+        self.max_action = max_action
+        self.policy_freq = policy_freq
+        self.total_it = 0
 
-    def select_action(self, state): # Verilen bir duruma göre aksiyon seçer (genellikle çıkarım/test sırasında kullanılır)
-        state = torch.FloatTensor(state.reshape(1, -1)) # Gelen durumu (NumPy dizisi olabilir) PyTorch tensörüne dönüştürür ve (1, state_dim) şeklinde yeniden boyutlandırır
-        return self.actor(state).detach().cpu().numpy().flatten() # Aktör modelinden aksiyonu alır, gradyan takibini keser (detach), CPU'ya taşır, NumPy dizisine çevirir ve tek boyutlu hale getirir (flatten)
+    def select_action(self, state):
+        """
+        Çıkarım sırasında kullanılacak metot.
+        Verilen state'i (numpy array) Torch tensörüne çevirir,
+        actor’dan eylemi alır ve numpy array olarak döner.
+        """
+        state = torch.FloatTensor(state.reshape(1, -1))
+        return self.actor(state).detach().cpu().numpy().flatten()
 
-    def train(self, replay_buffer, batch_size=100, gamma=0.99, tau=0.005, policy_noise=0.2, noise_clip=0.5): # TD3 ajanını eğitir
-        self.total_it += 1 # Toplam iterasyon sayacını bir artırır
+    def train(self, replay_buffer,
+              batch_size=100, gamma=0.99, tau=0.005,
+              policy_noise=0.2, noise_clip=0.5):
+        """
+        TD3’ün eğitim adımı:
+         1) Replay buffer’dan rasgele batch al,
+         2) Critic hedef değerlerini hesapla (target policy smoothing),
+         3) Critic1 ve Critic2 ayrı ayrı güncelle (Double-Q Learning),
+         4) Her policy_freq adımında actor’u ve hedef ağları (soft update) güncelle,
+         5) Geri dönerken hem actor hem iki critic’in ayrı ayrı loss değerlerini return et.
+        """
 
-        # Replay buffer'dan rastgele bir batch deneyim örneği al
+        self.total_it += 1
+
+        # 1) Batch örneği al
         state, action, reward, next_state, done = replay_buffer.sample(batch_size)
 
-        with torch.no_grad(): # Bu blok içindeki işlemler için gradyan hesaplaması yapılmaz (hedef değerler oluşturulurken kullanılır)
-            # Hedef politika yumuşatma (Target Policy Smoothing): Hedef aksiyonlara gürültü eklenir
-            noise = ( # Gürültü tensörü oluştur
-                torch.randn_like(action) * policy_noise # Aksiyonlarla aynı boyutta rastgele normal dağılımlı gürültü oluştur ve policy_noise ile ölçeklendir
-            ).clamp(-noise_clip, noise_clip) # Gürültüyü belirli bir aralığa (-noise_clip, noise_clip) kırp
+        # 2) Critic hedef değerlerini hesapla (target policy smoothing)
+        with torch.no_grad():
+            # 2.1) Actor_target üzerinden bir sonraki eylemi al, eyleme gürültü ekle
+            noise = (torch.randn_like(action) * policy_noise).clamp(-noise_clip, noise_clip)
+            next_action = (self.actor_target(next_state) + noise).clamp(-self.max_action, self.max_action)
 
-            # Kırpılmış gürültüyü ekleyerek bir sonraki aksiyonu hesapla
-            next_action = ( # Bir sonraki aksiyonu belirle
-                self.actor_target(next_state) + noise # Hedef aktörden bir sonraki durumu kullanarak aksiyonu al ve oluşturulan gürültüyü ekle
-            ).clamp(-self.max_action, self.max_action) # Sonucu geçerli aksiyon aralığına (-max_action, max_action) kırp
+            # 2.2) Critic_target’la Q1, Q2 değerlerini al
+            target_Q1, target_Q2 = self.critic_target(next_state, next_action)
+            # 2.3) Minimumu seç, TD hedefini oluştur
+            target_Q = torch.min(target_Q1, target_Q2)
+            y = reward + (1 - done) * gamma * target_Q.squeeze()
 
-            # Hedef Q-değerlerini hesapla (Clipped Double Q-Learning)
-            target_Q1, target_Q2 = self.critic_target(next_state, next_action) # Hedef critic ağlarından bir sonraki durum ve bir sonraki aksiyon için Q-değerlerini al
-            # print(f'target1: {target_Q1} target2: {target_Q2}') # Hesaplanan hedef Q1 ve Q2 değerlerini yazdır (debug amaçlı olabilir)
-            target_Q = torch.min(target_Q1, target_Q2) # İki hedef Q-değerinden daha küçük olanı seçerek aşırı tahmin (overestimation) sorununu azaltır
-            target_Q = reward + gamma * target_Q # Bellman denklemini kullanarak nihai hedef Q-değerini hesapla (burada (1-done) faktörü eksik olabilir, duruma göre eklenmeli)
-            '''(1 - done) *''' # Orijinal koddaki yorum satırı, genellikle target_Q = reward + (1 - done) * gamma * target_Q şeklinde kullanılır
-        
-        # Mevcut Q-değerlerini (tahminleri) al
-        current_Q1, current_Q2 = self.critic(state, action) # Ana critic ağlarından mevcut durum ve aksiyon için Q-değerlerini al
-        
-        # Critic kaybını (loss) hesapla: Ortalama Kare Hata (MSE) kaybı
-        critic_loss = nn.MSELoss()(current_Q1, target_Q) + nn.MSELoss()(current_Q2, target_Q) # Her iki critic ağı için kayıpları hesapla ve topla
+        # 3) Critic güncellemesi
+        current_Q1, current_Q2 = self.critic(state, action)
+        current_Q1 = current_Q1.squeeze()
+        current_Q2 = current_Q2.squeeze()
 
-        # Critic ağını güncelle
-        self.critic_optimizer.zero_grad() # Critic optimizer'ının gradyanlarını sıfırla
-        critic_loss.backward() # Kayıp üzerinden geriye doğru yayılım yaparak gradyanları hesapla
-        self.critic_optimizer.step() # Optimizer ile critic ağının parametrelerini güncelle
+        # Ayrı ayrı MSE hesaplayalım:
+        critic1_loss = nn.MSELoss()(current_Q1, y)
+        critic2_loss = nn.MSELoss()(current_Q2, y)
+        critic_loss = critic1_loss + critic2_loss
 
-        # Gecikmeli politika (Aktör) ve hedef ağ güncellemeleri
-        if self.total_it % self.policy_freq == 0: # Belirli sayıda iterasyonda bir (policy_freq) çalışır
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_optimizer.step()
 
-            # Aktör kaybını hesapla
-            actor_loss = -self.critic.q1_forward(state, self.actor(state)).mean() # Aktörün ürettiği aksiyonlar için Q1 değerini maksimize etmeye çalışır (negatifini minimize ederek)
+        actor_loss_val = None
+        # 4) Delayed Policy Güncellemesi (actor ve target ağları)
+        if self.total_it % self.policy_freq == 0:
+            # 4.1) Actor loss (Q1’i maximize etmek için negatif ortalama)
+            actor_loss = -self.critic.q1_forward(state, self.actor(state)).mean()
 
-            # Aktör ağını güncelle
-            self.actor_optimizer.zero_grad() # Aktör optimizer'ının gradyanlarını sıfırla
-            actor_loss.backward() # Kayıp üzerinden geriye doğru yayılım yaparak gradyanları hesapla
-            self.actor_optimizer.step() # Optimizer ile aktör ağının parametrelerini güncelle
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
 
-            # Hedef ağları yavaşça güncelle (soft update)
-            for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()): # Ana critic ve hedef critic parametreleri üzerinde döngü
-                target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data) # Hedef parametreleri ana parametrelere doğru küçük bir adımla (tau) yaklaştır
+            # 4.2) Soft update: Critic_target
+            for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
+                target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
 
-            for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()): # Ana aktör ve hedef aktör parametreleri üzerinde döngü
-                target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data) # Hedef parametreleri ana parametrelere doğru küçük bir adımla (tau) yaklaştır
+            # 4.3) Soft update: Actor_target
+            for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
+                target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
+
+            # Actor loss değerini sayıya çevir
+            actor_loss_val = actor_loss.item()
+
+        # Critic’lerin ayrı ayrı loss değerlerini sayıya çevir
+        critic1_loss_val = critic1_loss.item()
+        critic2_loss_val = critic2_loss.item()
+
+        # 5) Geri dönerken actor & critic1 & critic2 loss değerlerini ver
+        return actor_loss_val, critic1_loss_val, critic2_loss_val

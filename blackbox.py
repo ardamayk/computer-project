@@ -51,7 +51,7 @@ def main():
 
     # Kullanıcıdan model ismi alma
     model_name = input("Kullanmak istediğiniz model adını girin: ").strip()
-    
+    done = False
     # Modeli yükle
     success, _ = load_checkpoint(td3_agent, replay_buffer, model_name)
     if not success:
@@ -86,19 +86,22 @@ def main():
             state = env.reset(target_position, target_translation)
 
             # Modelden aksiyon al
-            action = td3_agent.select_action(np.array(state))
-            print(f"\nModel tarafından üretilen aksiyon: {action}")
+            while done is False:
+                action = td3_agent.select_action(np.array(state))
+                print(f"\nModel tarafından üretilen aksiyon: {action}")
 
-            # Aksiyonu uygula
-            try:
-                next_state, reward, done = env.step(action)
-                print(f"Reward: {reward:.2f}")
-                if done:
-                    print("Hedefe ulaşıldı!")
-                else:
-                    print("Hedefe ulaşılamadı.")
-            except Exception as e:
-                print(f"⚠️ Hata oluştu: {str(e)}")
+                # Aksiyonu uygula
+                try:
+                    next_state, reward, done = env.step(action)
+                    print(f"Reward: {reward:.2f}")
+                    if done:
+                        print("Hedefe ulaşıldı!")
+                    else:
+                        print("Hedefe ulaşılamadı.")
+                except Exception as e:
+                    print(f"⚠️ Hata oluştu: {str(e)}")
+                
+                state = next_state
 
             # Robotu başlangıç pozisyonuna döndür
             env.teleport_to_home()
