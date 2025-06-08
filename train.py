@@ -39,7 +39,7 @@ def sample_random_quaternion():
 
 def create_orientation_marker(position, quaternion):
     """
-    Tek bir marker (id=0) döndürür, böylece RViz’de her seferinde aynı ID’ye
+    Tek bir marker (id=0) döndürür, böylece RViz'de her seferinde aynı ID'ye
     sahip ok güncellenir ve eski okumalar silinmez, yalnızca güncellenir.
     """
     marker = Marker()
@@ -80,14 +80,14 @@ def main():
     executor_thread = threading.Thread(target=executor.spin, daemon=True)
     executor_thread.start()
 
-    # RViz’e hem hedef pozisyonu hem de orientation marker yayınlanacak
+    # RViz'e hem hedef pozisyonu hem de orientation marker yayınlanacak
     target_pub = env.create_publisher(PointStamped, 'target_position', 10)
     marker_pub = env.create_publisher(Marker, 'visualization_marker', 10)
 
     # Model ve replay buffer oluşturma
     state_dim = 20
     action_dim = 6
-    max_action = 0.2
+    max_action = 1
 
     actor = Actor(state_dim, action_dim, max_action)
     actor_target = Actor(state_dim, action_dim, max_action)
@@ -136,7 +136,7 @@ def main():
             if not success:
                 print("⚠️ Model yüklenemedi. Sıfırdan başlanacak.")
             else:
-                # Önceki loss dosyalarını da CSV’den yüklemeye çalış
+                # Önceki loss dosyalarını da CSV'den yüklemeye çalış
                 try:
                     import pandas as pd
                     model_dir = os.path.join("checkpoints", model_name)
@@ -203,7 +203,7 @@ def main():
             episode_critic1_losses = []
             episode_critic2_losses = []
 
-            # 5) RViz’e hedef pozisyon ve markeri yayınla
+            # 5) RViz'e hedef pozisyon ve markeri yayınla
             target_pub.publish(point_msg)
             marker_pub.publish(marker)
 
@@ -212,7 +212,7 @@ def main():
                 step_count += 1
                 print(f'İterasyon: {step_count}')
 
-                # 6.1) TD3’den ham eylem al
+                # 6.1) TD3'den ham eylem al
                 raw_action = td3_agent.select_action(np.array(state))
 
                 # 6.2) Exploration noise ekle
@@ -243,7 +243,7 @@ def main():
                     env.teleport_to_home()
                     break
 
-                # 6.4) ReplayBuffer’a ekle
+                # 6.4) ReplayBuffer'a ekle
                 replay_buffer.add(state, action, reward, next_state, float(done))
 
                 # 6.5) Öğrenme ve loss hesaplama
@@ -298,76 +298,42 @@ def main():
             current_critic1_losses.append(avg_critic1_loss)
             current_critic2_losses.append(avg_critic2_loss)
 
-            # 8) Checkpoint & CSV kaydet (en iyi reward ise)
-            if total_reward < best_reward:
-                best_reward = total_reward
-                print(f" Yeni en iyi reward: {best_reward:.2f}")
-                save_checkpoint(td3_agent, replay_buffer, current_rewards, "best")
-
-                # Actor/critic1/critic2 loss verilerini CSV’ye yaz
-                try:
-                    import pandas as pd
-                    model_dir = os.path.join("checkpoints", "best")
-                    if not os.path.exists(model_dir):
-                        os.makedirs(model_dir)
-
-                    df_a = pd.DataFrame({
-                        'episode': current_episodes,
-                        'actor_loss': current_actor_losses
-                    })
-                    df_a.to_csv(os.path.join(model_dir, "actor_losses.csv"), index=False)
-
-                    df_c1 = pd.DataFrame({
-                        'episode': current_episodes,
-                        'critic1_loss': current_critic1_losses
-                    })
-                    df_c1.to_csv(os.path.join(model_dir, "critic1_losses.csv"), index=False)
-
-                    df_c2 = pd.DataFrame({
-                        'episode': current_episodes,
-                        'critic2_loss': current_critic2_losses
-                    })
-                    df_c2.to_csv(os.path.join(model_dir, "critic2_losses.csv"), index=False)
-
-                    print("  📦 Actor/Critic1/Critic2 loss geçmişi kaydedildi.")
-                except Exception as e:
-                    print(f"❌ Loss kaydetme hatası: {e}")
-
-            # 9) Her 500 epizotta otomatik checkpoint oluştur (farklı bir dizin adıyla)
+            # 8) Her 500 epizotta otomatik checkpoint oluştur (farklı bir dizin adıyla)
             if (current_episode_number + 1) % 500 == 0:
                 # Benzersiz bir isim için zaman damgası ekleyelim
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 auto_name = f"auto_ep{current_episode_number+1}_{timestamp}"
                 print(f"🔖 Otomatik checkpoint kaydediliyor: {auto_name}")
-                save_checkpoint(td3_agent, replay_buffer, current_rewards, auto_name)
-                # Loss CSV’lerini de kaydet
-                try:
-                    import pandas as pd
-                    auto_dir = os.path.join("checkpoints", auto_name)
-                    if not os.path.exists(auto_dir):
-                        os.makedirs(auto_dir)
+                
+                # Önceki ve mevcut değerleri birleştir
+                combined_episodes = []
+                combined_actor_losses = []
+                combined_critic1_losses = []
+                combined_critic2_losses = []
+                combined_rewards = []
 
-                    df_a = pd.DataFrame({
-                        'episode': current_episodes,
-                        'actor_loss': current_actor_losses
-                    })
-                    df_a.to_csv(os.path.join(auto_dir, "actor_losses.csv"), index=False)
+                # Önceki değerleri ekle (eğer varsa)
+                if previous_episodes is not None:
+                    combined_episodes.extend(previous_episodes)
+                    if previous_actor_losses is not None:
+                        combined_actor_losses.extend(previous_actor_losses)
+                    if previous_critic1_losses is not None:
+                        combined_critic1_losses.extend(previous_critic1_losses)
+                    if previous_critic2_losses is not None:
+                        combined_critic2_losses.extend(previous_critic2_losses)
+                    if previous_rewards is not None:
+                        combined_rewards.extend(previous_rewards)
 
-                    df_c1 = pd.DataFrame({
-                        'episode': current_episodes,
-                        'critic1_loss': current_critic1_losses
-                    })
-                    df_c1.to_csv(os.path.join(auto_dir, "critic1_losses.csv"), index=False)
-
-                    df_c2 = pd.DataFrame({
-                        'episode': current_episodes,
-                        'critic2_loss': current_critic2_losses
-                    })
-                    df_c2.to_csv(os.path.join(auto_dir, "critic2_losses.csv"), index=False)
-
-                    print(f"  📦 Otomatik loss geçmişi kaydedildi: {auto_name}")
-                except Exception as e:
-                    print(f"❌ Otomatik loss kaydetme hatası: {e}")
+                # Mevcut değerleri ekle
+                combined_episodes.extend(current_episodes)
+                combined_actor_losses.extend(current_actor_losses)
+                combined_critic1_losses.extend(current_critic1_losses)
+                combined_critic2_losses.extend(current_critic2_losses)
+                combined_rewards.extend(current_rewards)
+                
+                save_checkpoint(td3_agent, replay_buffer, combined_rewards, auto_name,
+                              combined_episodes, combined_actor_losses,
+                              combined_critic1_losses, combined_critic2_losses)
 
             # 10) Grafikleri Güncelle
             visualizer.update(
@@ -383,36 +349,36 @@ def main():
         save_choice = input("Checkpoint ve değerler kaydedilsin mi? (e/h): ").strip().lower()
         if save_choice == 'e':
             model_name = input("Kaydetmek için model adı girin: ").strip()
-            save_checkpoint(td3_agent, replay_buffer, current_rewards, model_name)
+            
+            # Önceki ve mevcut değerleri birleştir
+            combined_episodes = []
+            combined_actor_losses = []
+            combined_critic1_losses = []
+            combined_critic2_losses = []
+            combined_rewards = []
 
-            # Actor/critic1/critic2 loss’u da kaydet
-            try:
-                import pandas as pd
-                model_dir = os.path.join("checkpoints", model_name)
-                if not os.path.exists(model_dir):
-                    os.makedirs(model_dir)
+            # Önceki değerleri ekle (eğer varsa)
+            if previous_episodes is not None:
+                combined_episodes.extend(previous_episodes)
+                if previous_actor_losses is not None:
+                    combined_actor_losses.extend(previous_actor_losses)
+                if previous_critic1_losses is not None:
+                    combined_critic1_losses.extend(previous_critic1_losses)
+                if previous_critic2_losses is not None:
+                    combined_critic2_losses.extend(previous_critic2_losses)
+                if previous_rewards is not None:
+                    combined_rewards.extend(previous_rewards)
 
-                df_a = pd.DataFrame({
-                    'episode': current_episodes,
-                    'actor_loss': current_actor_losses
-                })
-                df_a.to_csv(os.path.join(model_dir, "actor_losses.csv"), index=False)
-
-                df_c1 = pd.DataFrame({
-                    'episode': current_episodes,
-                    'critic1_loss': current_critic1_losses
-                })
-                df_c1.to_csv(os.path.join(model_dir, "critic1_losses.csv"), index=False)
-
-                df_c2 = pd.DataFrame({
-                    'episode': current_episodes,
-                    'critic2_loss': current_critic2_losses
-                })
-                df_c2.to_csv(os.path.join(model_dir, "critic2_losses.csv"), index=False)
-
-                print("  📦 Actor/Critic1/Critic2 loss geçmişi kaydedildi.")
-            except Exception as e:
-                print(f"❌ Loss kaydetme hatası: {e}")
+            # Mevcut değerleri ekle
+            combined_episodes.extend(current_episodes)
+            combined_actor_losses.extend(current_actor_losses)
+            combined_critic1_losses.extend(current_critic1_losses)
+            combined_critic2_losses.extend(current_critic2_losses)
+            combined_rewards.extend(current_rewards)
+            
+            save_checkpoint(td3_agent, replay_buffer, combined_rewards, model_name,
+                          combined_episodes, combined_actor_losses,
+                          combined_critic1_losses, combined_critic2_losses)
         else:
             print(" Kaydetmeden çıkılıyor.")
     finally:

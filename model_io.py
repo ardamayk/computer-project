@@ -86,10 +86,79 @@ def load_rewards(model_name):
     print(f"✅ Reward değerleri yüklendi: {rewards_path}")
     return df['episode'].values, df['reward'].values
 
-def save_checkpoint(td3_agent, replay_buffer, rewards, model_name):
-    """Model, replay buffer ve reward'ları kaydeder."""
-    save_model(td3_agent, replay_buffer, model_name)
-    save_rewards(rewards, model_name)
+def save_actor_losses(model_dir, episodes, losses):
+    """Actor loss değerlerini CSV dosyasına kaydeder."""
+    try:
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        
+        df = pd.DataFrame({
+            'episode': episodes,
+            'actor_loss': losses
+        })
+        df.to_csv(os.path.join(model_dir, "actor_losses.csv"), index=False)
+        print(f"  📊 Actor loss değerleri kaydedildi: {model_dir}")
+        return True
+    except Exception as e:
+        print(f"❌ Actor loss kaydetme hatası: {e}")
+        return False
+
+def save_critic1_losses(model_dir, episodes, losses):
+    """Critic1 loss değerlerini CSV dosyasına kaydeder."""
+    try:
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        
+        df = pd.DataFrame({
+            'episode': episodes,
+            'critic1_loss': losses
+        })
+        df.to_csv(os.path.join(model_dir, "critic1_losses.csv"), index=False)
+        print(f"  📊 Critic1 loss değerleri kaydedildi: {model_dir}")
+        return True
+    except Exception as e:
+        print(f"❌ Critic1 loss kaydetme hatası: {e}")
+        return False
+
+def save_critic2_losses(model_dir, episodes, losses):
+    """Critic2 loss değerlerini CSV dosyasına kaydeder."""
+    try:
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        
+        df = pd.DataFrame({
+            'episode': episodes,
+            'critic2_loss': losses
+        })
+        df.to_csv(os.path.join(model_dir, "critic2_losses.csv"), index=False)
+        print(f"  📊 Critic2 loss değerleri kaydedildi: {model_dir}")
+        return True
+    except Exception as e:
+        print(f"❌ Critic2 loss kaydetme hatası: {e}")
+        return False
+
+def save_checkpoint(td3_agent, replay_buffer, rewards, model_name, 
+                   combined_episodes=None, combined_actor_losses=None, 
+                   combined_critic1_losses=None, combined_critic2_losses=None):
+    """Model, replay buffer, reward ve loss değerlerini kaydeder."""
+    try:
+        # Model ve reward'ları kaydet
+        save_model(td3_agent, replay_buffer, model_name)
+        save_rewards(rewards, model_name)
+        
+        # Loss değerlerini kaydet (eğer verilmişse)
+        model_dir = os.path.join("checkpoints", model_name)
+        if all(x is not None for x in [combined_episodes, combined_actor_losses, 
+                                     combined_critic1_losses, combined_critic2_losses]):
+            save_actor_losses(model_dir, combined_episodes, combined_actor_losses)
+            save_critic1_losses(model_dir, combined_episodes, combined_critic1_losses)
+            save_critic2_losses(model_dir, combined_episodes, combined_critic2_losses)
+        
+        print(f"✅ Checkpoint kaydedildi: {model_name}")
+        return True
+    except Exception as e:
+        print(f"❌ Checkpoint kaydetme hatası: {e}")
+        return False
 
 def load_checkpoint(td3_agent, replay_buffer, model_name):
     """Model, replay buffer ve reward'ları yükler."""
