@@ -1,0 +1,26 @@
+SORULAR
+reward değişimi
+    yaklaştıkça ve hızına göre bir puan verme
+    belli bir yarıçapa girdikten sonra uzaklaşırsa eksi puan verme, yaklaşırsa ulaşırsa pozitif ödül verme
+    yere çarpma yaptığı için çok büyük negatif puan verme
+    
+    ikincil ödüller: 
+        zamana bağlı olarak ceza verme
+
+
+zorluk derecesin tam olarak ne oluyor?
+
+
+td3 loss çizdirme tam olarak ne ?
+
+hedefe vardığında durması gerekiyor, birkaç saniye orada kalması gerekiyor, otomatik durdurma yapsak
+
+YAPILANLAR
+
+ağı kaydetmeyi yaptık 
+rewardları kaydetmeyi yaptık
+blackboxmodel yapıldı ancak sadece max_action ile hedef veriyor arttırmalı mıyız? arttırırsak modeli tekrardan eğitime tabi tutmalı mıyız? ihtiyadca göre değişbilir.
+hedef nokta yarı çağı yapıldı
+
+
+oryantasyon bilgisi gerekiyor
