@@ -230,7 +230,7 @@ def main():
                         if time.time() - iter_start > ACTION_TIMEOUT:
                             print(f"\u23f0 {ACTION_TIMEOUT} saniyeyi aştı. Episode iptal.")
                             env.teleport_to_home()
-                            reward = -50.0
+                            reward = -10.0
                             next_state = state
                             done = True
                             break
