@@ -95,7 +95,14 @@ class RobotEnv(Node):
         self.current_joint_angles = np.array(msg.position[:6])
         return self.current_joint_angles
 
-    def compute_reward(self):
+    def compute_reward(self, old_position, current_position):
+
+        position, _ = self.get_end_effector_position()
+        raw_distance = np.linalg.norm(position - self.target_position)
+        reward =  -5 * raw_distance  # Ceza katsayısı azaltıldı
+
+        if old_position is None or current_position is None or self.target_position is None:
+            return reward
         """
         - Eğer TF alınamazsa veya hedef yoksa: ağır ceza (-10.0).
         - raw_distance <= reward_radius: 
@@ -105,9 +112,8 @@ class RobotEnv(Node):
              eğer entered_reward_zone True ise: çift kat ceza = -2 * (raw_distance - reward_radius)
              değilse (henüz iç bölgeye girmemiş) normal ceza = - (raw_distance - reward_radius)
         """
-        position, _ = self.get_end_effector_position()
         if position is None or self.target_position is None:
-            return -10.0
+            return reward
         '''
         raw_distance = np.linalg.norm(position - self.target_position)
 
@@ -123,17 +129,24 @@ class RobotEnv(Node):
             else:
                 return -10.0 * diff
         '''
-        raw_distance = np.linalg.norm(position - self.target_position)
 
-        reward =  -5 * raw_distance  # Ceza katsayısı azaltıldı
+
+        old_distance = np.linalg.norm(old_position - self.target_position)
+        new_distance = np.linalg.norm(current_position - self.target_position)
+
+        if new_distance < old_distance:
+            print("Hedefe yaklaşıyor")
+        else:
+            print("Hedeften uzaklaşıyor")
+
+        reward = old_distance - new_distance  # Hedefe yaklaşınca pozitif
 
         # Yere yaklaşmaya kademeli ceza (daha yumuşak)
-        z = position[2]
-        if z < 0.1:
-            reward -= (0.1 - z) * 20  # Ceza katsayısı azaltıldı
-        if z < 0.05:
-            reward -= (0.05 - z) * 40  # Ceza katsayısı azaltıldı
-
+        # z = current_position[2]
+        # if z < 0.1:
+        #     reward -= (0.1 - z) * 40
+        # if z < 0.05:
+        #     reward -= (0.05 - z) * 80
         return reward
     
     def get_observation(self, target_position, target_translation):
@@ -239,6 +252,7 @@ class RobotEnv(Node):
             self.get_logger().warn("Joint açıları alınamadı.")
             return np.zeros(20), -10.0, True  # Bölümü hemen sonlandır
 
+        old_position, _ = self.get_end_effector_position()
         new_joint_states = self.current_joint_angles + np.array(action)
         msg = JointTrajectory()
         msg.joint_names = self.joint_names
@@ -280,8 +294,9 @@ class RobotEnv(Node):
             return next_obs, reward, True
 
         # Ödül, gözlem, done
+        new_position, _ = self.get_end_effector_position()
         obs = self.get_observation(self.target_position, self.target_translation)
-        reward = self.compute_reward()
+        reward = self.compute_reward(old_position, new_position)
         done = self.is_done()
 
         if done:
