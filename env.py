@@ -140,6 +140,7 @@ class RobotEnv(Node):
             print("Hedeften uzaklaşıyor")
 
         reward = 10 * (old_distance - new_distance)  # Hedefe yaklaşınca pozitif
+        reward = reward * reward
 
         # Hedefin yerden yüksekliği 0.2'nin altındaysa ve end-effector'un z'si 0.1 veya 0.05'in altına inerse ceza uygula
         target_z = self.target_position[2]
@@ -255,7 +256,7 @@ class RobotEnv(Node):
         """
         if self.current_joint_angles is None:
             self.get_logger().warn("Joint açıları alınamadı.")
-            return np.zeros(20), -10.0, True  # Bölümü hemen sonlandır
+            return np.zeros(20 ), -10.0, True  # Bölümü hemen sonlandır
 
         old_position, _ = self.get_end_effector_position()
         new_joint_states = self.current_joint_angles + np.array(action)
@@ -276,6 +277,7 @@ class RobotEnv(Node):
 
             # Periyodik çarpışma kontrolü
             if time.time() - last_collision_check >= 1.0:
+                self.publisher.publish(msg)
                 if self.check_collision():
                     # Çarpışma anında ağır ceza, home'a ışınla, bölümü sonlandır
                     reward = -10.0
@@ -305,7 +307,7 @@ class RobotEnv(Node):
         done = self.is_done()
 
         if done:
-            reward = 50  # Başarı ödülü artırıldı
+            reward = 30  # Başarı ödülü artırıldı
             print("🎉 Hedefe ulaşıldı! 🎉")
 
         return obs, reward, done
