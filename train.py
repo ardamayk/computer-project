@@ -164,7 +164,7 @@ def main():
     # Görselleştiriciyi başlat
     visualizer = RewardVisualizer()
 
-    episodes = 1000
+    episodes = 10000
     best_reward = float('inf')
     ACTION_TIMEOUT = 20
 

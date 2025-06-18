@@ -125,16 +125,14 @@ class RobotEnv(Node):
         '''
         raw_distance = np.linalg.norm(position - self.target_position)
 
-        reward =  -10 * raw_distance
+        reward =  -5 * raw_distance  # Ceza katsayısı azaltıldı
 
-        # Yere yaklaşmaya kademeli ceza
+        # Yere yaklaşmaya kademeli ceza (daha yumuşak)
         z = position[2]
         if z < 0.1:
-            # 0.1'den küçükse, ceza kademeli artsın
-            reward -= (0.1 - z) * 50  # Ceza katsayısı ayarlanabilir
+            reward -= (0.1 - z) * 20  # Ceza katsayısı azaltıldı
         if z < 0.05:
-            # Çok yaklaştıysa ekstra ceza
-            reward -= (0.05 - z) * 100
+            reward -= (0.05 - z) * 40  # Ceza katsayısı azaltıldı
 
         return reward
     
@@ -230,8 +228,8 @@ class RobotEnv(Node):
     def step(self, action):
         """
         Aksiyon vektörünü alır, robotu o joint açılarına taşır:
-        - Çarpışma durumunda: -10 ceza, home’a ışınla, bölüm bitir.
-        - raw_distance <= done_radius ise: sadece done=True (ödül compute_reward’dan gelir).
+        - Çarpışma durumunda: -10 ceza, home'a ışınla, bölüm bitir.
+        - raw_distance <= done_radius ise: sadece done=True (ödül compute_reward'dan gelir).
         - raw_distance <= reward_radius: pozitif ödül (0.3 – raw_distance), bayrak True.
         - raw_distance > reward_radius:
             • entered_reward_zone True ise: ceza = -2*(raw_distance – 0.3)
@@ -261,7 +259,7 @@ class RobotEnv(Node):
             if time.time() - last_collision_check >= 1.0:
                 if self.check_collision():
                     # Çarpışma anında ağır ceza, home'a ışınla, bölümü sonlandır
-                    reward = -100.0
+                    reward = -50.0
                     self.teleport_to_home()
                     next_obs = self.get_observation(self.target_position, self.target_translation)
                     return next_obs, reward, True
@@ -276,7 +274,7 @@ class RobotEnv(Node):
 
         # Adım sonrası son çarpışma kontrolü
         if self.check_collision():
-            reward = -100.0
+            reward = -50.0
             self.teleport_to_home()
             next_obs = self.get_observation(self.target_position, self.target_translation)
             return next_obs, reward, True
@@ -287,7 +285,7 @@ class RobotEnv(Node):
         done = self.is_done()
 
         if done:
-            reward = 50
+            reward = 50  # Başarı ödülü artırıldı
             print("🎉 Hedefe ulaşıldı! 🎉")
 
         return obs, reward, done
