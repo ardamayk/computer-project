@@ -125,7 +125,18 @@ class RobotEnv(Node):
         '''
         raw_distance = np.linalg.norm(position - self.target_position)
 
-        return -10 * raw_distance
+        reward =  -10 * raw_distance
+
+        # Yere yaklaşmaya kademeli ceza
+        z = position[2]
+        if z < 0.1:
+            # 0.1'den küçükse, ceza kademeli artsın
+            reward -= (0.1 - z) * 50  # Ceza katsayısı ayarlanabilir
+        if z < 0.05:
+            # Çok yaklaştıysa ekstra ceza
+            reward -= (0.05 - z) * 100
+
+        return reward
     
     def get_observation(self, target_position, target_translation):
         position, rotation = self.get_end_effector_position()
