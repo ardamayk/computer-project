@@ -199,6 +199,7 @@ def main():
             total_reward = 0.0
             done = False
             step_count = 0
+            episode_start_time = time.time()  # Episode sayacını başlat
 
             # Episode boyunca biriktirilecek loss listeleri
             episode_actor_losses = []
@@ -269,6 +270,12 @@ def main():
                     print(f"🏁 Episode sona erdi. Robot eve dönüyor.")
                     env.teleport_to_home()
                     break
+
+            # Episode bitti, süreye bağlı ödülü hesapla ve ekle
+            duration = time.time() - episode_start_time
+            time_reward = 15 - duration  # 15 saniyeden hızlıysa ödül, yavaşsa ceza
+            print(f'Episode süresi: {duration:.2f}s, Zaman ödülü: {time_reward:.2f}')
+            total_reward += time_reward
 
             print(f'Episode {ep+1} Total Reward: {total_reward:.2f}')
 
