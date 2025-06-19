@@ -141,20 +141,11 @@ class RobotEnv(Node):
 
         reward = 10 * (old_distance - new_distance)  # Hedefe yaklaşınca pozitif
         if reward >= 0:
-            reward = reward * reward
+            reward = reward #* reward
         else:
-            reward = reward * reward * -1 
+            reward = reward * -1#* reward * -1 
 
         # Hedefin yerden yüksekliği 0.2'nin altındaysa ve end-effector'un z'si 0.1 veya 0.05'in altına inerse ceza uygula
-        target_z = self.target_position[2]
-        end_eff_z = current_position[2]
-        if target_z < 0.2:
-            if end_eff_z < 0.1:
-                print(f"Hedef yerden düşükken, end-effector 0.1 altına indi! Ceza: {(0.1 - end_eff_z) * 40}")
-                reward -= (0.1 - end_eff_z) * 40
-            if end_eff_z < 0.05:
-                print(f"Hedef yerden düşükken, end-effector 0.05 altına indi! Ekstra ceza: {(0.05 - end_eff_z) * 80}")
-                reward -= (0.05 - end_eff_z) * 80
 
         return reward
     

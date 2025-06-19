@@ -87,7 +87,7 @@ def main():
     # Model ve replay buffer oluşturma
     state_dim = 20
     action_dim = 6
-    max_action = 1
+    max_action = 0.5
 
     actor = Actor(state_dim, action_dim, max_action)
     actor_target = Actor(state_dim, action_dim, max_action)
@@ -178,6 +178,8 @@ def main():
         for ep in range(episodes):
             # 1) Rastgele pozisyon ve oryantasyon örnekle
             target_position = sample_target_ur5e()
+            if target_position[2] < 0.4:
+                target_position[2] = 0.4
             target_quaternion = sample_random_quaternion()  # [qx, qy, qz, qw]
 
             # 2) RViz için PointStamped
