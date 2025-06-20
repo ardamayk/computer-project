@@ -17,12 +17,22 @@ from model_io import load_checkpoint, save_checkpoint, list_available_models
 
 def sample_target_ur5e(base_position=np.array([0,0,0]), max_reach=0.8):
     """
-    0.8 m yarıçaplı küre içinde rastgele bir nokta örnekler.
+    max_reach yarıçaplı küre içinde homojen rastgele bir nokta örnekler.
+    Robotun erişim yarıçapı 0.8 m (800 mm) olarak alınır.
     """
-    while True:
-        point = np.random.uniform(-max_reach, max_reach, 3) + base_position
-        if np.linalg.norm(point - base_position) <= max_reach and point[2] >= 0:
-            return point
+    # max_reach, 0.8'den büyükse 0.8'e sabitlenir
+    max_reach = min(max_reach, 0.8)
+    # Homojen küre içi örnekleme
+    u = np.random.uniform(0, 1)
+    v = np.random.uniform(0, 1)
+    w = np.random.uniform(0, 1)
+    theta = 2 * np.pi * u
+    phi = np.arccos(2 * v - 1)
+    r = max_reach * (w ** (1/3))
+    x = r * np.sin(phi) * np.cos(theta)
+    y = r * np.sin(phi) * np.sin(theta)
+    z = r * np.cos(phi)
+    return base_position + np.array([x, y, z])
 
 def sample_random_quaternion():
     """
