@@ -15,26 +15,35 @@ from visualization_msgs.msg import Marker
 from visualization import RewardVisualizer
 from model_io import load_checkpoint, save_checkpoint, list_available_models
 
-def sample_target_ur5e(base_position=np.array([0,0,0]), max_reach=0.8, min_reach=0.1):
+def sample_target_ur5e(base_position=np.array([0,0,0]), max_reach=0.8, min_reach=0.1, z_min=None, z_max=None):
     """
-    min_reach ve max_reach arasında, homojen rastgele bir nokta örnekler.
-    Robotun erişim yarıçapı 0.8 m (800 mm) olarak alınır.
+    min_reach ve max_reach arasında, z_min ve z_max aralığında homojen rastgele bir nokta örnekler.
     """
     max_reach = min(max_reach, 0.8)
     min_reach = max(0.0, min_reach)
     while True:
         u = np.random.uniform(0, 1)
-        v = np.random.uniform(0, 1)
         w = np.random.uniform(0, 1)
         theta = 2 * np.pi * u
-        phi = np.arccos(2 * v - 1)
         # r'yi min_reach ile max_reach arasında homojen dağıtmak için:
         r = ((max_reach**3 - min_reach**3) * w + min_reach**3) ** (1/3)
+        # z aralığı belirlenmişse, phi'yi ona göre ayarla
+        if z_min is not None and z_max is not None:
+            # z = r * cos(phi) => phi = arccos(z/r)
+            # z_min <= z <= z_max
+            # arccos(z_max/r) <= phi <= arccos(z_min/r)
+            z_min_clip = np.clip(z_min, -r, r)
+            z_max_clip = np.clip(z_max, -r, r)
+            phi_min = np.arccos(z_max_clip / r)
+            phi_max = np.arccos(z_min_clip / r)
+            phi = np.random.uniform(phi_min, phi_max)
+        else:
+            v = np.random.uniform(0, 1)
+            phi = np.arccos(2 * v - 1)
         x = r * np.sin(phi) * np.cos(theta)
         y = r * np.sin(phi) * np.sin(theta)
         z = r * np.cos(phi)
         point = base_position + np.array([x, y, z])
-        # Nokta, base_position'a en az min_reach kadar uzakta mı?
         if np.linalg.norm(point - base_position) >= min_reach:
             return point
 
@@ -192,13 +201,17 @@ def main():
         for ep in range(episodes):
             # 1) Rastgele pozisyon ve oryantasyon örnekle
             if ep < 1000:
-                target_position = sample_target_ur5e(max_reach=0.2)
+                # z >= 0.5
+                target_position = sample_target_ur5e(max_reach=0.8, z_min=0.4, z_max=0.8)
             elif ep < 1500:
-                target_position = sample_target_ur5e(max_reach=0.4)
-            elif ep < 2000:
-                target_position = sample_target_ur5e(max_reach=0.6)
+                # 0 <= z < 0.5
+                target_position = sample_target_ur5e(max_reach=0.8, z_min=0.0, z_max=0.4)
+            elif ep < 2500:
+                # z < 0
+                target_position = sample_target_ur5e(max_reach=0.8, z_min=-0.8, z_max=0.0)
             else:
-                target_position = sample_target_ur5e()  # default: 0.8
+                # tüm uzay
+                target_position = sample_target_ur5e(max_reach=0.8)
 
             print(f"Verilen hedef pozisyonu: {target_position}")
             target_quaternion = sample_random_quaternion()  # [qx, qy, qz, qw]
