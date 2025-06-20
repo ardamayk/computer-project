@@ -200,7 +200,7 @@ def main():
     try:
         for ep in range(episodes):
             # 1) Rastgele pozisyon ve oryantasyon örnekle
-            if ep < 1000:
+            if ep < 750:
                 # z >= 0.5
                 target_position = sample_target_ur5e(max_reach=0.8, z_min=0.4, z_max=0.8)
             elif ep < 1500:
