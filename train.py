@@ -177,9 +177,17 @@ def main():
     try:
         for ep in range(episodes):
             # 1) Rastgele pozisyon ve oryantasyon örnekle
-            target_position = sample_target_ur5e()
+            if ep < 1000:
+                target_position = sample_target_ur5e(max_reach=0.2)
+            elif ep < 1500:
+                target_position = sample_target_ur5e(max_reach=0.4)
+            elif ep < 2000:
+                target_position = sample_target_ur5e(max_reach=0.6)
+            else:
+                target_position = sample_target_ur5e()  # default: 0.8
             if target_position[2] < 0.4:
                 target_position[2] = 0.4
+            print(f"Verilen hedef pozisyonu: {target_position}")
             target_quaternion = sample_random_quaternion()  # [qx, qy, qz, qw]
 
             # 2) RViz için PointStamped
