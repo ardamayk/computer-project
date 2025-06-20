@@ -15,37 +15,19 @@ from visualization_msgs.msg import Marker
 from visualization import RewardVisualizer
 from model_io import load_checkpoint, save_checkpoint, list_available_models
 
-def sample_target_ur5e(base_position=np.array([0,0,0]), max_reach=0.8, min_reach=0.1, z_min=None, z_max=None):
+def sample_target_ur5e(base_position=np.array([0,0,0]), max_reach=0.8, z_min=None, z_max=None):
     """
-    min_reach ve max_reach arasında, z_min ve z_max aralığında homojen rastgele bir nokta örnekler.
+    Kullanıcının tarif ettiği matematiksel yönteme göre nokta üretir.
     """
-    max_reach = min(max_reach, 0.8)
-    min_reach = max(0.0, min_reach)
+
     while True:
-        u = np.random.uniform(0, 1)
-        w = np.random.uniform(0, 1)
-        theta = 2 * np.pi * u
-        # r'yi min_reach ile max_reach arasında homojen dağıtmak için:
-        r = ((max_reach**3 - min_reach**3) * w + min_reach**3) ** (1/3)
-        # z aralığı belirlenmişse, phi'yi ona göre ayarla
-        if z_min is not None and z_max is not None:
-            # z = r * cos(phi) => phi = arccos(z/r)
-            # z_min <= z <= z_max
-            # arccos(z_max/r) <= phi <= arccos(z_min/r)
-            z_min_clip = np.clip(z_min, -r, r)
-            z_max_clip = np.clip(z_max, -r, r)
-            phi_min = np.arccos(z_max_clip / r)
-            phi_max = np.arccos(z_min_clip / r)
-            phi = np.random.uniform(phi_min, phi_max)
-        else:
-            v = np.random.uniform(0, 1)
-            phi = np.arccos(2 * v - 1)
-        x = r * np.sin(phi) * np.cos(theta)
-        y = r * np.sin(phi) * np.sin(theta)
-        z = r * np.cos(phi)
+        z = np.random.uniform(z_min, z_max)
+        x_kalan_mesafe = np.sqrt(max_reach**2 - z**2)
+        x = np.random.uniform(-x_kalan_mesafe, x_kalan_mesafe)
+        y_kalan_mesafe = np.sqrt(x_kalan_mesafe**2 - x**2)
+        y = np.random.uniform(-y_kalan_mesafe, y_kalan_mesafe)
         point = base_position + np.array([x, y, z])
-        if np.linalg.norm(point - base_position) >= min_reach:
-            return point
+        return point
 
 def sample_random_quaternion():
     """
@@ -110,7 +92,7 @@ def main():
     # Model ve replay buffer oluşturma
     state_dim = 20
     action_dim = 6
-    max_action = 0.5
+    max_action = 0.2
 
     actor = Actor(state_dim, action_dim, max_action)
     actor_target = Actor(state_dim, action_dim, max_action)
@@ -211,7 +193,7 @@ def main():
                 target_position = sample_target_ur5e(max_reach=0.8, z_min=-0.8, z_max=0.0)
             else:
                 # tüm uzay
-                target_position = sample_target_ur5e(max_reach=0.8)
+                target_position = sample_target_ur5e(max_reach=0.8, z_min=-0.8, z_max=0.8)
 
             print(f"Verilen hedef pozisyonu: {target_position}")
             target_quaternion = sample_random_quaternion()  # [qx, qy, qz, qw]
@@ -307,9 +289,12 @@ def main():
 
             # Episode bitti, süreye bağlı ödülü hesapla ve ekle
             duration = time.time() - episode_start_time
-            time_reward = 15 - duration  # 15 saniyeden hızlıysa ödül, yavaşsa ceza
-            print(f'Episode süresi: {duration:.2f}s, Zaman ödülü: {time_reward:.2f}')
-            total_reward += time_reward
+            if ep >= 2500:
+                time_reward = 15 - duration  # 15 saniyeden hızlıysa ödül, yavaşsa ceza
+                print(f'Episode süresi: {duration:.2f}s, Zaman ödülü: {time_reward:.2f}')
+                total_reward += time_reward
+            else:
+                print(f'Episode süresi: {duration:.2f}s, Zaman ödülü: 0.00 (ep < 2500)')
 
             print(f'Episode {ep+1} Total Reward: {total_reward:.2f}')
 
