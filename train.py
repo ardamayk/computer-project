@@ -173,7 +173,7 @@ def main():
     best_reward = float('inf')
     ACTION_TIMEOUT = 20
 
-    # Keşif gürültüsü ayarları
+    # Keşif gürü ltüsü ayarları
     initial_sigma = 0.1 * max_action
     final_sigma   = 0.01 * max_action
     decay_steps   = 50000
@@ -246,10 +246,10 @@ def main():
                         next_state, reward, done = env.step(action)
                         break
                     except TimeoutError:
-                        if time.time() - iter_start > ACTION_TIMEOUT:
+                        if time.time() - iter_start > 3:
                             print(f"\u23f0 {ACTION_TIMEOUT} saniyeyi aştı. Episode iptal.")
                             env.teleport_to_home()
-                            reward = -10.0
+                            reward = 0.0
                             next_state = state
                             done = True
                             break
@@ -288,13 +288,13 @@ def main():
                     break
 
             # Episode bitti, süreye bağlı ödülü hesapla ve ekle
-            duration = time.time() - episode_start_time
-            if ep >= 2500:
-                time_reward = 15 - duration  # 15 saniyeden hızlıysa ödül, yavaşsa ceza
-                print(f'Episode süresi: {duration:.2f}s, Zaman ödülü: {time_reward:.2f}')
-                total_reward += time_reward
-            else:
-                print(f'Episode süresi: {duration:.2f}s, Zaman ödülü: 0.00 (ep < 2500)')
+            # duration = time.time() - episode_start_time
+            # if ep >= 2500:
+              #   time_reward = 15 - duration  # 15 saniyeden hızlıysa ödül, yavaşsa ceza
+            #     print(f'Episode süresi: {duration:.2f}s, Zaman ödülü: {time_reward:.2f}')
+              #   total_reward += time_reward
+            # else:
+              #   print(f'Episode süresi: {duration:.2f}s, Zaman ödülü: 0.00 (ep < 2500)')
 
             print(f'Episode {ep+1} Total Reward: {total_reward:.2f}')
 
